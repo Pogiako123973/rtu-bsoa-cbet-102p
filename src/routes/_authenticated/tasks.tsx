@@ -255,7 +255,7 @@ function TasksPage() {
   );
 }
 
-function NewTodoDialog({ studentId }: { studentId?: string }) {
+function NewTodoDialog({ studentId }: { studentId: string | undefined }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -351,7 +351,7 @@ function SubmitDialog({
   submitted,
 }: {
   assignmentId: string;
-  studentId?: string;
+  studentId: string | undefined;
   submitted: boolean;
 }) {
   const queryClient = useQueryClient();
