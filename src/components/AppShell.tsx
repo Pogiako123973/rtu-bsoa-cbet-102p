@@ -41,7 +41,7 @@ export function AppShell({
   children,
 }: {
   title: string;
-  subtitle?: string;
+  subtitle?: string | undefined;
   children: React.ReactNode;
 }) {
   const { data: me } = useMe();

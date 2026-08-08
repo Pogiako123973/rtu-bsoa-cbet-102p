@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated/home'
 import { Route as AuthenticatedLessonsRouteImport } from './routes/_authenticated/lessons'
+import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/tasks'
 
@@ -41,6 +42,11 @@ const AuthenticatedLessonsRoute = AuthenticatedLessonsRouteImport.update({
   path: '/lessons',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedScheduleRoute = AuthenticatedScheduleRouteImport.update({
   id: '/schedule',
   path: '/schedule',
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/home': typeof AuthenticatedHomeRoute
   '/lessons': typeof AuthenticatedLessonsRoute
+  '/profile': typeof AuthenticatedProfileRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/tasks': typeof AuthenticatedTasksRoute
 }
@@ -65,6 +72,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/home': typeof AuthenticatedHomeRoute
   '/lessons': typeof AuthenticatedLessonsRoute
+  '/profile': typeof AuthenticatedProfileRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/tasks': typeof AuthenticatedTasksRoute
 }
@@ -75,14 +83,16 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/home': typeof AuthenticatedHomeRoute
   '/_authenticated/lessons': typeof AuthenticatedLessonsRoute
+  '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/tasks': typeof AuthenticatedTasksRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/home' | '/lessons' | '/schedule' | '/tasks'
+  fullPaths:
+    '/' | '/auth' | '/home' | '/lessons' | '/profile' | '/schedule' | '/tasks'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/home' | '/lessons' | '/schedule' | '/tasks'
+  to: '/' | '/auth' | '/home' | '/lessons' | '/profile' | '/schedule' | '/tasks'
   id:
     | '__root__'
     | '/'
@@ -90,6 +100,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/home'
     | '/_authenticated/lessons'
+    | '/_authenticated/profile'
     | '/_authenticated/schedule'
     | '/_authenticated/tasks'
   fileRoutesById: FileRoutesById
@@ -137,6 +148,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLessonsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/profile': {
+      id: '/_authenticated/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof AuthenticatedProfileRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/schedule': {
       id: '/_authenticated/schedule'
       path: '/schedule'
@@ -157,6 +175,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedHomeRoute: typeof AuthenticatedHomeRoute
   AuthenticatedLessonsRoute: typeof AuthenticatedLessonsRoute
+  AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedTasksRoute: typeof AuthenticatedTasksRoute
 }
@@ -164,6 +183,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedHomeRoute: AuthenticatedHomeRoute,
   AuthenticatedLessonsRoute: AuthenticatedLessonsRoute,
+  AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedTasksRoute: AuthenticatedTasksRoute,
 }
@@ -179,3 +199,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
