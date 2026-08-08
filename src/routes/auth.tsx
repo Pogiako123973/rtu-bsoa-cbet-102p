@@ -1,10 +1,11 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, GraduationCap } from "lucide-react";
+import { ArrowLeft, GraduationCap, Mail } from "lucide-react";
 import { z } from "zod";
 
 import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,62 +41,43 @@ function AuthPage() {
     });
   }, [navigate]);
 
+  async function handleOAuth(provider: "google" | "apple" | "microsoft" | "lovable") {
+    setLoading(true);
+    try {
+      const result = await lovable.auth.signInWithOAuth(provider, {
+        redirect_uri: `${window.location.origin}/home`,
+      });
+      // If the broker redirected the browser to the provider, this code will
+      // not run again — the user lands back on /home with a valid session.
+      if (result.error) throw result.error;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "OAuth sign-in failed");
+      setLoading(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
       if (mode === "signup") {
-        // First, try to sign in. If the account already exists, this succeeds
-        // and we skip signUp entirely. If not, the error tells us so.
-        const { data: signInData, error: signInError } =
-          await supabase.auth.signInWithPassword({ email, password });
-
-        if (!signInError && signInData.session) {
-          toast.success("Signed in — welcome back!");
-          navigate({ to: "/home", replace: true });
-          return;
-        }
-
-        // Account doesn't exist (or wrong password). Create it.
-        const { data, error } = await supabase.auth.signUp({
+        const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/home`,
             data: { full_name: fullName },
           },
         });
         if (error) throw error;
-
-        // If signUp didn't return a session (project has email confirmation
-        // enabled), try signing in with the same password. The auto-confirm
-        // trigger should mark the user as confirmed; if for any reason it
-        // hasn't yet, retry briefly.
-        if (!data.session) {
-          let lastError: unknown = null;
-          for (let attempt = 0; attempt < 4; attempt += 1) {
-            await new Promise((r) => setTimeout(r, 500));
-            const { data: s2, error: e2 } =
-              await supabase.auth.signInWithPassword({ email, password });
-            if (s2.session) {
-              toast.success("Account created — you're in!");
-              navigate({ to: "/home", replace: true });
-              return;
-            }
-            lastError = e2;
-          }
-          throw lastError instanceof Error
-            ? lastError
-            : new Error(
-                "Account created but sign-in failed. Refresh the page and try again.",
-              );
-        }
-        toast.success("Account created — you're in!");
+        toast.success(
+          "Account created. Check your email to confirm, then sign in.",
+        );
+        setMode("signin");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        navigate({ to: "/home", replace: true });
       }
-      navigate({ to: "/home", replace: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Something went wrong");
     } finally {
@@ -129,6 +111,39 @@ function AuthPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* OAuth providers — primary path. These create a verified session
+                immediately and bypass the email-confirmation requirement. */}
+            <div className="grid grid-cols-1 gap-2">
+              <Button
+                type="button"
+                variant="default"
+                onClick={() => handleOAuth("lovable")}
+                disabled={loading}
+              >
+                <Mail className="mr-2 size-4" aria-hidden />
+                Continue with Lovable
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleOAuth("google")}
+                disabled={loading}
+              >
+                Continue with Google
+              </Button>
+            </div>
+
+            <div className="relative my-2">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">
+                  or with email
+                </span>
+              </div>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
               {mode === "signup" && (
                 <div className="space-y-2">
