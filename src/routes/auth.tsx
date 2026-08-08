@@ -45,7 +45,7 @@ function AuthPage() {
     setLoading(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -54,6 +54,17 @@ function AuthPage() {
           },
         });
         if (error) throw error;
+
+        // If the project has email confirmation enabled, signUp returns a
+        // user but no session. Fall back to a direct password sign-in so the
+        // demo still works without an email round-trip.
+        if (!data.session) {
+          const { error: signInErr } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+          if (signInErr) throw signInErr;
+        }
         toast.success("Account created — you're in!");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
