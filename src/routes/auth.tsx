@@ -45,6 +45,18 @@ function AuthPage() {
     setLoading(true);
     try {
       if (mode === "signup") {
+        // First, try to sign in. If the account already exists, this succeeds
+        // and we skip signUp entirely. If not, the error tells us so.
+        const { data: signInData, error: signInError } =
+          await supabase.auth.signInWithPassword({ email, password });
+
+        if (!signInError && signInData.session) {
+          toast.success("Signed in — welcome back!");
+          navigate({ to: "/home", replace: true });
+          return;
+        }
+
+        // Account doesn't exist (or wrong password). Create it.
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -55,15 +67,28 @@ function AuthPage() {
         });
         if (error) throw error;
 
-        // If the project has email confirmation enabled, signUp returns a
-        // user but no session. Fall back to a direct password sign-in so the
-        // demo still works without an email round-trip.
+        // If signUp didn't return a session (project has email confirmation
+        // enabled), try signing in with the same password. The auto-confirm
+        // trigger should mark the user as confirmed; if for any reason it
+        // hasn't yet, retry briefly.
         if (!data.session) {
-          const { error: signInErr } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
-          if (signInErr) throw signInErr;
+          let lastError: unknown = null;
+          for (let attempt = 0; attempt < 4; attempt += 1) {
+            await new Promise((r) => setTimeout(r, 500));
+            const { data: s2, error: e2 } =
+              await supabase.auth.signInWithPassword({ email, password });
+            if (s2.session) {
+              toast.success("Account created — you're in!");
+              navigate({ to: "/home", replace: true });
+              return;
+            }
+            lastError = e2;
+          }
+          throw lastError instanceof Error
+            ? lastError
+            : new Error(
+                "Account created but sign-in failed. Refresh the page and try again.",
+              );
         }
         toast.success("Account created — you're in!");
       } else {
