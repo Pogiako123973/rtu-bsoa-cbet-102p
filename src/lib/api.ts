@@ -49,10 +49,10 @@ export interface Lesson {
 
 export interface ScheduleEntry {
   id: string;
-  student_id: string | null; // null = applies to all students
+  student_id: string | null; 
   subject: string;
-  day_of_week: number; // 0..6 (Sun..Sat)
-  start_time: string; // "HH:MM"
+  day_of_week: number; 
+  start_time: string;
   end_time: string;
   room: string | null;
 }
@@ -79,7 +79,7 @@ export interface AttendanceRecord {
   id: string;
   student_id: string;
   schedule_id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   status: "present" | "absent" | "late";
 }
 
@@ -91,7 +91,6 @@ export interface ChatMessage {
   created_at: string;
 }
 
-/* ---------------- Lessons ---------------- */
 export async function listLessons(): Promise<Lesson[]> {
   const { data, error } = await supabase
     .from("lessons")
@@ -119,7 +118,6 @@ export async function createLesson(input: {
       created_by: input.created_by,
       attachments: input.attachments,
       attachment_texts: input.attachment_texts ?? {},
-      // Keep the legacy columns in sync for back-compat readers.
       attachment_path: primary?.kind === "file" ? primary.path : null,
       attachment_name: primary?.kind === "file" ? primary.name : null,
       attachment_type: primary?.kind === "file" ? primary.type : null,
@@ -131,15 +129,6 @@ export async function createLesson(input: {
   return data as Lesson;
 }
 
-/**
- * Back-compat client-side search, kept so other pages that still
- * import `searchLessons` (e.g. a student-facing lessons view) don't
- * break. Matches title/subject/content only — it does NOT search
- * inside attachment text, since that requires the async storage
- * download handled in AdminLessons.tsx's `extraTexts` backfill. If a
- * page needs file-content search too, port the same `attachText`/
- * `fetchAttachmentText` approach used there instead of calling this.
- */
 export async function searchLessons(query: string): Promise<Lesson[]> {
   const q = query.trim().toLowerCase();
   const all = await listLessons();
@@ -150,7 +139,6 @@ export async function searchLessons(query: string): Promise<Lesson[]> {
 }
 
 export async function deleteLesson(id: string): Promise<void> {
-  // Best-effort: gather attachment paths first so we can clean storage.
   const { data } = await supabase
     .from("lessons")
     .select("attachments, attachment_path")
@@ -162,7 +150,6 @@ export async function deleteLesson(id: string): Promise<void> {
   const filePaths = atts
     .filter((a): a is Extract<LessonAttachment, { kind: "file" }> => a.kind === "file")
     .map((a) => a.path);
-  // Skip the legacy path if it's already covered by the attachments array.
   const legacy = (data as any)?.attachment_path as string | null;
   if (legacy && !filePaths.includes(legacy)) filePaths.push(legacy);
 
@@ -173,10 +160,6 @@ export async function deleteLesson(id: string): Promise<void> {
   }
 }
 
-/**
- * Upload a file to the `lesson-files` bucket under a unique path.
- * Returns the storage path (not a public URL — bucket is private).
- */
 export async function uploadLessonFile(file: File): Promise<{
   path: string;
   name: string;
@@ -193,7 +176,6 @@ export async function uploadLessonFile(file: File): Promise<{
   return { path, name: file.name, type: file.type, size: file.size };
 }
 
-/** Get a short-lived signed URL for a private attachment (1 hour). */
 export async function getLessonFileUrl(path: string): Promise<string> {
   const { data, error } = await supabase.storage
     .from("lesson-files")
@@ -202,19 +184,12 @@ export async function getLessonFileUrl(path: string): Promise<string> {
   return data.signedUrl;
 }
 
-/** Best-effort delete; ignores missing-file errors. */
 export async function deleteLessonFile(path: string): Promise<void> {
   const { error } = await supabase.storage.from("lesson-files").remove([path]);
   // ignore "not found" since the row may already be gone
   if (error && !/not\s*found/i.test(error.message)) throw error;
 }
 
-/**
- * Find a file inside the `lesson-files` bucket by its bare filename.
- * Used by chat to resolve messages whose content is just an uploaded
- * filename. Returns the storage path + a short-lived signed URL, or
- * `null` when no matching object exists.
- */
 export async function findLessonFileByName(name: string): Promise<{
   path: string;
   url: string;
@@ -223,8 +198,6 @@ export async function findLessonFileByName(name: string): Promise<{
 } | null> {
   const trimmed = name.trim().replace(/^["']|["']$/g, "");
   if (!trimmed) return null;
-  // List the bucket; the folder structure is shallow, so a single page
-  // is enough in practice for class-sized uploads.
   const { data, error } = await supabase.storage
     .from("lesson-files")
     .list("", { limit: 1000, search: trimmed });
@@ -245,8 +218,6 @@ export async function findLessonFileByName(name: string): Promise<{
   };
 }
 
-// Same "is this readable as text" rules as the upload-time indexer in
-// AdminLessons.tsx, so the two stay consistent about what gets read.
 const TEXT_MIME = [
   /^text\//,
   /application\/(json|xml|ld\+json|yaml|x-yaml|plain)$/,
@@ -259,14 +230,6 @@ export function isTextLikeAttachment(name: string, type?: string | null): boolea
   return TEXT_EXT.test(name);
 }
 
-/**
- * Download a private attachment from storage and read it as text, so
- * search can reach *inside* files whose text was never captured at
- * upload time (legacy lessons, or uploads where extraction was
- * skipped/failed). Non-text files and oversized files are skipped —
- * same 1.5MB / 200k-char caps as the upload-time extraction, so a
- * search backfill pass stays cheap.
- */
 export async function fetchAttachmentText(
   path: string,
   name: string,
@@ -316,7 +279,6 @@ export async function deleteScheduleEntry(id: string): Promise<void> {
   if (error) throw error;
 }
 
-/* ---------------- Students (admin) ---------------- */
 export interface StudentLite {
   id: string;
   email: string;
@@ -335,7 +297,6 @@ export async function listStudents(): Promise<StudentLite[]> {
   return (data ?? []) as StudentLite[];
 }
 
-/* ---------------- Assignments ---------------- */
 export async function listAssignments(): Promise<Assignment[]> {
   const { data, error } = await supabase
     .from("assignments")
@@ -372,7 +333,6 @@ export async function listMySubmissions(studentId: string): Promise<AssignmentSu
   return (data ?? []) as AssignmentSubmission[];
 }
 
-/** Admin: list all submissions for a single assignment. */
 export async function listStudentSubmissions(assignmentId: string): Promise<AssignmentSubmission[]> {
   const { data, error } = await supabase
     .from("assignment_submissions")
@@ -397,7 +357,6 @@ export async function submitAssignment(input: {
   return data as AssignmentSubmission;
 }
 
-/* ---------------- Attendance ---------------- */
 export async function listMyAttendance(studentId: string): Promise<AttendanceRecord[]> {
   const { data, error } = await supabase
     .from("attendance")
@@ -406,6 +365,31 @@ export async function listMyAttendance(studentId: string): Promise<AttendanceRec
     .order("date", { ascending: false });
   if (error) throw error;
   return (data ?? []) as AttendanceRecord[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Admin: view / delete a specific student's attendance. Functionally the
+// same query shape as listMyAttendance, kept as separate exports so intent
+// at call sites (admin viewing someone else's records) is clear.
+// ─────────────────────────────────────────────────────────────────────────
+export async function listAttendanceForStudent(studentId: string): Promise<AttendanceRecord[]> {
+  const { data, error } = await supabase
+    .from("attendance")
+    .select("*")
+    .eq("student_id", studentId)
+    .order("date", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as AttendanceRecord[];
+}
+
+export async function deleteAttendanceRecord(id: string): Promise<void> {
+  const { error } = await supabase.from("attendance").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteAllAttendanceForStudent(studentId: string): Promise<void> {
+  const { error } = await supabase.from("attendance").delete().eq("student_id", studentId);
+  if (error) throw error;
 }
 
 export async function markAttendance(input: {
@@ -422,8 +406,7 @@ export async function markAttendance(input: {
   if (error) throw error;
   return data as AttendanceRecord;
 }
-
-/* ---------------- Chat ---------------- */
+   
 export async function listMessages(room = "general", limit = 200): Promise<ChatMessage[]> {
   const { data, error } = await supabase
     .from("chat_messages")
