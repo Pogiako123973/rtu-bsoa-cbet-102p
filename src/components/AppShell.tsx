@@ -1,15 +1,17 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   Calendar,
   ClipboardCheck,
   LayoutDashboard,
   LogOut,
+  Menu,
   MessageSquare,
   ScrollText,
   Settings,
   BookOpen,
   Users,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
@@ -52,6 +54,7 @@ export function AppShell({ children }: AppShellProps) {
   const navigate = useNavigate();
   const isAdmin = profile?.role === "admin";
   const nav = isAdmin ? adminNav : studentNav;
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   async function handleSignOut() {
     await signOut();
@@ -72,19 +75,47 @@ export function AppShell({ children }: AppShellProps) {
   useRealtimeNotifications();
 
   return (
-    <div className="grid min-h-screen grid-cols-[260px_1fr] bg-muted/30">
+    <div className="min-h-screen bg-muted/30 md:grid md:grid-cols-[260px_1fr]">
       <AddToHomeBanner />
-      <aside className="bg-sidebar text-sidebar-foreground flex flex-col">
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-sidebar-border">
-          {/* RTU diamond logo next to "ClassDesk" in both the
-              admin and student sidebars. */}
-          <Logo rounded size={36} />
-          <div className="flex flex-col">
-            <span className="font-display text-base font-semibold leading-tight">RTU-BSOA</span>
-            <span className="text-xs text-sidebar-foreground/70">
-              {isAdmin ? "Admin portal" : "Student portal"}
-            </span>
+
+      {/* Mobile overlay, shown behind the drawer while it's open */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={cn(
+          "bg-sidebar text-sidebar-foreground flex flex-col",
+          // Mobile: fixed drawer, off-canvas by default, slides in when open
+          "fixed inset-y-0 left-0 z-50 w-72 -translate-x-full transition-transform duration-200 ease-out",
+          sidebarOpen && "translate-x-0",
+          // Desktop: back to a normal static column, no transform/overlay
+          "md:static md:z-auto md:w-auto md:translate-x-0"
+        )}
+      >
+        <div className="flex items-center justify-between gap-3 px-6 py-5 border-b border-sidebar-border">
+          <div className="flex items-center gap-3">
+            {/* RTU diamond logo next to "ClassDesk" in both the
+                admin and student sidebars. */}
+            <Logo rounded size={36} />
+            <div className="flex flex-col">
+              <span className="font-display text-base font-semibold leading-tight">RTU-BSOA</span>
+              <span className="text-xs text-sidebar-foreground/70">
+                {isAdmin ? "Admin portal" : "Student portal"}
+              </span>
+            </div>
           </div>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="rounded-md p-1.5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:hidden"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
@@ -93,6 +124,7 @@ export function AppShell({ children }: AppShellProps) {
               key={item.to}
               to={item.to}
               end={item.end}
+              onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
@@ -129,18 +161,27 @@ export function AppShell({ children }: AppShellProps) {
       </aside>
 
       <main className="flex flex-col">
-        <header className="flex h-14 items-center justify-between border-b bg-background px-6">
-          <div className="text-sm text-muted-foreground">
-            <Link to={isAdmin ? "/admin" : "/student"} className="hover:text-foreground">
-              {isAdmin ? "Admin" : "Student"} portal
-            </Link>
+        <header className="flex h-14 items-center justify-between border-b bg-background px-4 md:px-6">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="text-sm text-muted-foreground">
+              <Link to={isAdmin ? "/admin" : "/student"} className="hover:text-foreground">
+                {isAdmin ? "Admin" : "Student"} portal
+              </Link>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
             <Settings className="h-4 w-4" />
             <span>v0.1.0</span>
           </div>
         </header>
-        <div className="flex-1 p-6">{children}</div>
+        <div className="flex-1 p-4 md:p-6">{children}</div>
       </main>
     </div>
   );
