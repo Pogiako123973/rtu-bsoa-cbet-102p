@@ -1,53 +1,125 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useState } from "react";
+import { Session, User } from "@supabase/supabase-js";
+import { supabase, type Profile, type AppRole } from "@/lib/supabase";
 
-export type AppRole = "admin" | "teacher" | "student";
+export interface AuthState {
+  session: Session | null;
+  user: User | null;
+  profile: Profile | null;
+  role: AppRole | null;
+  loading: boolean;
+}
 
-export type Me = {
-  userId: string;
-  email: string;
-  profile: {
-    id: string;
-    full_name: string;
-    email: string;
-    section_id: string | null;
-    year_level: string;
-    avatar_url: string | null;
-  } | null;
-  roles: AppRole[];
-  isAdmin: boolean;
-  isTeacher: boolean;
-  isStaff: boolean;
-};
-
-export function useMe() {
-  return useQuery<Me | null>({
-    queryKey: ["me"],
-    queryFn: async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData.user;
-      if (!user) return null;
-
-      const [{ data: profile }, { data: roleRows }] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("id, full_name, email, section_id, year_level, avatar_url")
-          .eq("id", user.id)
-          .maybeSingle(),
-        supabase.from("user_roles").select("role").eq("user_id", user.id),
-      ]);
-
-      const roles = (roleRows ?? []).map((r) => r.role as AppRole);
-      return {
-        userId: user.id,
-        email: user.email ?? "",
-        profile: profile ?? null,
-        roles,
-        isAdmin: roles.includes("admin"),
-        isTeacher: roles.includes("teacher"),
-        isStaff: roles.includes("admin") || roles.includes("teacher"),
-      };
-    },
-    staleTime: 30_000,
+export function useAuth() {
+  const [state, setState] = useState<AuthState>({
+    session: null,
+    user: null,
+    profile: null,
+    role: null,
+    loading: true,
   });
+
+  useEffect(() => {
+    let mounted = true;
+
+    // Initial session load
+    supabase.auth.getSession().then(async ({ data }) => {
+      const session = data.session;
+      if (!mounted) return;
+      if (!session) {
+        setState({
+          session: null,
+          user: null,
+          profile: null,
+          role: null,
+          loading: false,
+        });
+        return;
+      }
+      const profile = await fetchProfile(session.user.id);
+      if (!mounted) return;
+      setState({
+        session,
+        user: session.user,
+        profile,
+        role: profile?.role ?? null,
+        loading: false,
+      });
+    });
+
+    // Subscribe to auth changes
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mounted) return;
+      if (!session) {
+        setState({
+          session: null,
+          user: null,
+          profile: null,
+          role: null,
+          loading: false,
+        });
+        return;
+      }
+      const profile = await fetchProfile(session.user.id);
+      if (!mounted) return;
+      setState({
+        session,
+        user: session.user,
+        profile,
+        role: profile?.role ?? null,
+        loading: false,
+      });
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  async function signIn(email: string, password: string) {
+    return await supabase.auth.signInWithPassword({ email, password });
+  }
+
+  async function signUp(args: {
+    email: string;
+    password: string;
+    fullName: string;
+    studentId?: string;
+    role?: AppRole;
+  }) {
+    const { email, password, fullName, studentId, role } = args;
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+          student_id: studentId,
+          role: role ?? "student",
+        },
+      },
+    });
+    return { data, error };
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+  }
+
+  return { ...state, signIn, signUp, signOut };
+}
+
+async function fetchProfile(userId: string): Promise<Profile | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.warn("[auth] failed to fetch profile:", error.message);
+    return null;
+  }
+  return data ?? null;
 }
