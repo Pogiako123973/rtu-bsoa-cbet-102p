@@ -81,7 +81,7 @@ export function AppShell({ children }: AppShellProps) {
       {/* Mobile overlay, shown behind the drawer while it's open */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] transition-opacity duration-200 md:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
@@ -89,12 +89,12 @@ export function AppShell({ children }: AppShellProps) {
 
       <aside
         className={cn(
-          "bg-sidebar text-sidebar-foreground flex flex-col",
+          "bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border/60",
           // Mobile: fixed drawer, off-canvas by default, slides in when open
-          "fixed inset-y-0 left-0 z-50 w-72 -translate-x-full transition-transform duration-200 ease-out",
+          "fixed inset-y-0 left-0 z-50 w-72 -translate-x-full shadow-2xl transition-transform duration-300 ease-out",
           sidebarOpen && "translate-x-0",
-          // Desktop: back to a normal static column, no transform/overlay
-          "md:static md:z-auto md:w-auto md:translate-x-0"
+          // Desktop: back to a normal static column, no transform/overlay/shadow
+          "md:static md:z-auto md:w-auto md:translate-x-0 md:shadow-none"
         )}
       >
         <div className="flex items-center justify-between gap-3 px-6 py-5 border-b border-sidebar-border">
@@ -111,7 +111,7 @@ export function AppShell({ children }: AppShellProps) {
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="rounded-md p-1.5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:hidden"
+            className="rounded-full border border-sidebar-border bg-sidebar-accent/40 p-2 text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:hidden"
             aria-label="Close menu"
           >
             <X className="h-5 w-5" />
@@ -127,9 +127,9 @@ export function AppShell({ children }: AppShellProps) {
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                  "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                   isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium before:absolute before:-left-3 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-r-full before:bg-primary"
                     : "text-sidebar-foreground/85 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                 )
               }
@@ -162,10 +162,10 @@ export function AppShell({ children }: AppShellProps) {
 
       <main className="flex flex-col">
         <header className="flex h-14 items-center justify-between border-b bg-background px-4 md:px-6">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
+              className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-card text-foreground shadow-sm transition-transform active:scale-95 md:hidden"
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
