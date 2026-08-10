@@ -8,6 +8,18 @@ import { registerSW } from "virtual:pwa-register";
  */
 export function PwaRegister() {
   useEffect(() => {
+    // Ask the browser not to treat this origin's storage as evictable.
+    // Mostly relevant on iOS, where storage for installed Home Screen
+    // apps has historically been less reliably persisted than a normal
+    // Safari tab — this is a no-op on browsers that don't support it,
+    // and support/behavior on iOS Safari specifically is inconsistent,
+    // but it's a harmless extra signal to request.
+    if (typeof navigator !== "undefined" && navigator.storage?.persist) {
+      navigator.storage.persist().then((granted) => {
+        console.info("[pwa] persistent storage granted:", granted);
+      });
+    }
+
     if (import.meta.env.DEV) return;
     const updateSW = registerSW({
       onNeedRefresh() {

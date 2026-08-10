@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   FileText,
   Image as ImageIcon,
@@ -80,6 +81,7 @@ type PendingLink = { id: string; name: string; url: string };
 
 export default function AdminLessons() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [lessons, setLessons] = useState<Lesson[]>([]);
   // Unfiltered list. We snapshot this on initial load + after any new
   // lesson so that when the user clears the search box we can restore
@@ -99,6 +101,7 @@ export default function AdminLessons() {
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [subjectFilter, setSubjectFilter] = useState<string>("all");
+  const [flashId, setFlashId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Text pulled from storage for attachments whose `attachment_texts`
@@ -120,6 +123,43 @@ export default function AdminLessons() {
   }
 
   useEffect(refresh, []);
+
+  // Deep-link support: /admin/lessons?highlight=<lessonId> opens that
+  // lesson's viewer automatically (e.g. from the admin overview activity
+  // feed) and briefly rings the matching card. Clears filters that might
+  // otherwise hide the target, then strips the param so a refresh doesn't
+  // reopen it.
+  useEffect(() => {
+    const highlightId = searchParams.get("highlight");
+    if (!highlightId || loading) return;
+    const target = allLessons.find((l) => l.id === highlightId);
+    if (!target) return;
+
+    setQuery("");
+    setSubjectFilter("all");
+    setViewing(target);
+    setFlashId(target.id);
+
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`lesson-${target.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    const flashTimer = setTimeout(() => setFlashId(null), 2500);
+
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("highlight");
+        return next;
+      },
+      { replace: true },
+    );
+
+    return () => clearTimeout(flashTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, allLessons, loading]);
 
   // Backfill search text for file attachments that don't have an entry
   // in `attachment_texts` yet (e.g. lessons uploaded before text
@@ -641,12 +681,20 @@ export default function AdminLessons() {
       ) : (
         <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {visible.map((l) => (
-            <LessonCard
+            <div
               key={l.id}
-              lesson={l}
-              onView={() => setViewing(l)}
-              onDelete={() => onDelete(l)}
-            />
+              id={`lesson-${l.id}`}
+              className={cn(
+                "rounded-lg transition-shadow duration-700",
+                flashId === l.id && "ring-2 ring-primary ring-offset-2",
+              )}
+            >
+              <LessonCard
+                lesson={l}
+                onView={() => setViewing(l)}
+                onDelete={() => onDelete(l)}
+              />
+            </div>
           ))}
         </div>
       )}

@@ -1,21 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { listSchedule, type ScheduleEntry } from "@/lib/api";
 import { formatTimeRange } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-// Show at most this many entries per day by default; the rest hide behind
-// a "+ N more" button so the card stays compact.
 const PREVIEW_COUNT = 2;
 
 export default function StudentSchedule() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [entries, setEntries] = useState<ScheduleEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [flashId, setFlashId] = useState<string | null>(null);
 
   useEffect(() => {
     listSchedule()
@@ -24,7 +26,6 @@ export default function StudentSchedule() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Live updates: refetch when schedule changes anywhere in the system.
   useEffect(() => {
     function onChange(e: Event) {
       const table = (e as CustomEvent<{ table: string }>).detail?.table;
@@ -39,8 +40,7 @@ export default function StudentSchedule() {
 
   const byDay = useMemo(() => {
     const groups: Record<number, ScheduleEntry[]> = {};
-    for (const e of entries) (groups[e.day_of_week] ??= []).push(e);
-    // Sort each day by start time so the day always reads top-to-bottom.
+    for (const e of entries) (groups[e.day_of_week] ??= []).push(e);  
     for (const day of Object.keys(groups)) {
       groups[Number(day)].sort((a, b) => a.start_time.localeCompare(b.start_time));
     }
@@ -55,6 +55,39 @@ export default function StudentSchedule() {
       return next;
     });
   }
+
+  // Deep-link support: /student/schedule?highlight=<entryId> (e.g. from the
+  // Live activity feed) force-expands that entry's day, scrolls to it, and
+  // briefly flashes the row. Strips the param afterward.
+  useEffect(() => {
+    const highlightId = searchParams.get("highlight");
+    if (!highlightId || loading) return;
+    const target = entries.find((e) => e.id === highlightId);
+    if (!target) return;
+
+    setExpanded((prev) => new Set(prev).add(target.day_of_week));
+    setFlashId(target.id);
+
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`schedule-${target.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    const flashTimer = setTimeout(() => setFlashId(null), 2500);
+
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("highlight");
+        return next;
+      },
+      { replace: true },
+    );
+
+    return () => clearTimeout(flashTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, entries, loading]);
 
   return (
     <div>
@@ -87,7 +120,14 @@ export default function StudentSchedule() {
                     <>
                       <div className="flex flex-col gap-1.5">
                         {visible.map((e) => (
-                          <div key={e.id} className="student-row">
+                          <div
+                            key={e.id}
+                            id={`schedule-${e.id}`}
+                            className={cn(
+                              "student-row rounded-md transition-shadow duration-700",
+                              flashId === e.id && "ring-2 ring-primary ring-offset-2",
+                            )}
+                          >
                           <div
                             className="flex min-h-[2.25rem] flex-col justify-center rounded-md border bg-card/40 px-2.5 py-1 text-sm"
                           >

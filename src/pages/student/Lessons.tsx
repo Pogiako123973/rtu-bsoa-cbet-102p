@@ -1,62 +1,98 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Loader2, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  fetchAttachmentText,
+  lessonAttachments,
   listLessons,
-  searchLessons,
   type Lesson,
 } from "@/lib/api";
 import { LessonViewer } from "@/components/LessonViewer";
 import { LessonCard } from "@/components/LessonCard";
+import { cn } from "@/lib/utils";
 
 export default function StudentLessons() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [allLessons, setAllLessons] = useState<Lesson[]>([]);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchLoading, setSearchLoading] = useState(false);
   const [viewing, setViewing] = useState<Lesson | null>(null);
   const [query, setQuery] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("all");
+  const [flashId, setFlashId] = useState<string | null>(null);
+
+  const [extraTexts, setExtraTexts] = useState<Record<string, string>>({});
+  const fetchingPathsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     listLessons()
       .then((rows) => {
         setAllLessons(rows);
-        setLessons(rows);
       })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  // Debounced full-text search (matches title / subject / notes / file
-  // contents / link metadata). Empty query → restore the full list.
+  // Deep-link support: /student/lessons?highlight=<lessonId> (e.g. from the
+  // Live activity feed) clears any active search/filter so the target
+  // can't be hidden, opens its viewer automatically, scrolls to the card,
+  // and briefly rings it. Strips the param afterward.
   useEffect(() => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setLessons(allLessons);
-      setSearchLoading(false);
-      return;
+    const highlightId = searchParams.get("highlight");
+    if (!highlightId || loading) return;
+    const target = allLessons.find((l) => l.id === highlightId);
+    if (!target) return;
+
+    setQuery("");
+    setSubjectFilter("all");
+    setViewing(target);
+    setFlashId(target.id);
+
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`lesson-${target.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    const flashTimer = setTimeout(() => setFlashId(null), 2500);
+
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("highlight");
+        return next;
+      },
+      { replace: true },
+    );
+
+    return () => clearTimeout(flashTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, allLessons, loading]);
+
+  useEffect(() => {
+    const todo: { path: string; name: string; type: string }[] = [];
+    for (const l of allLessons) {
+      for (const a of lessonAttachments(l)) {
+        if (a.kind !== "file") continue;
+        if (l.attachment_texts?.[a.path]) continue; // already indexed
+        if (extraTexts[a.path] !== undefined) continue; // already fetched
+        if (fetchingPathsRef.current.has(a.path)) continue; // in flight
+        todo.push({ path: a.path, name: a.name, type: a.type });
+      }
     }
-    const ctrl = new AbortController();
-    setSearchLoading(true);
-    const handle = setTimeout(() => {
-      searchLessons(trimmed)
-        .then((rows) => {
-          if (!ctrl.signal.aborted) setLessons(rows);
-        })
-        .catch((e) => toast.error(e.message))
-        .finally(() => {
-          if (!ctrl.signal.aborted) setSearchLoading(false);
-        });
-    }, 220);
-    return () => {
-      ctrl.abort();
-      clearTimeout(handle);
-    };
-  }, [query, allLessons]);
+    if (todo.length === 0) return;
+
+    todo.forEach((a) => fetchingPathsRef.current.add(a.path));
+    Promise.allSettled(
+      todo.map(async (a) => {
+        const text = await fetchAttachmentText(a.path, a.name, a.type);
+        setExtraTexts((prev) => ({ ...prev, [a.path]: text ?? "" }));
+      }),
+    );
+  }, [allLessons]);
 
   const subjects = useMemo(() => {
     const set = new Set<string>();
@@ -65,9 +101,68 @@ export default function StudentLessons() {
   }, [allLessons]);
 
   const visible = useMemo(() => {
-    if (subjectFilter === "all") return lessons;
-    return lessons.filter((l) => l.subject === subjectFilter);
-  }, [lessons, subjectFilter]);
+    const trimmed = query.trim();
+
+    let pool = allLessons;
+    if (subjectFilter !== "all") {
+      pool = pool.filter((l) => l.subject === subjectFilter);
+    }
+
+    if (!trimmed) return pool;
+
+    const tokens: string[] = [];
+    const excludes: string[] = [];
+    const phraseRegex = /"([^"]+)"/g;
+    const cleaned = trimmed.replace(phraseRegex, (_, phrase) => {
+      tokens.push(phrase.toLowerCase());
+      return "";
+    });
+    for (const raw of cleaned.split(/\s+/)) {
+      const w = raw.toLowerCase().trim();
+      if (!w) continue;
+      if (w.startsWith("-")) excludes.push(w.slice(1));
+      else tokens.push(w);
+    }
+
+    const attachText = (l: Lesson): string => {
+      const parts: string[] = [];
+      for (const [k, v] of Object.entries(l.attachment_texts ?? {})) {
+        parts.push(k, v);
+      }
+      for (const a of lessonAttachments(l)) {
+        parts.push(a.name);
+        if (a.kind === "link") parts.push(a.url);
+        if (a.kind === "file" && extraTexts[a.path]) {
+          parts.push(extraTexts[a.path]);
+        }
+      }
+      return parts.join(" ").toLowerCase();
+    };
+
+    const haystack = (l: Lesson) =>
+      [l.title, l.subject, l.content, attachText(l)].join(" ").toLowerCase();
+
+    const ranked = pool
+      .map((l) => {
+        const h = haystack(l);
+        if (excludes.some((x) => h.includes(x))) return null;
+        if (tokens.length === 0) return { l, score: 0 };
+        let score = 0;
+        for (const t of tokens) {
+          if (h.includes(t)) score += t.length;
+          else return null; // required token missing
+        }
+        return { l, score };
+      })
+      .filter((x): x is { l: Lesson; score: number } => x !== null)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return b.l.created_at.localeCompare(a.l.created_at);
+      })
+      .map((x) => x.l);
+
+    return ranked;
+  }, [allLessons, query, subjectFilter, extraTexts]);
 
   return (
     <div>
@@ -114,17 +209,8 @@ export default function StudentLessons() {
 
       {query.trim() && (
         <p className="mb-3 text-xs text-muted-foreground">
-          {searchLoading ? (
-            <>
-              <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
-              Searching…
-            </>
-          ) : (
-            <>
-              {visible.length} {visible.length === 1 ? "lesson" : "lessons"}{" "}
-              match "{query.trim()}"
-            </>
-          )}
+          {visible.length} {visible.length === 1 ? "lesson" : "lessons"}{" "}
+          match "{query.trim()}"
         </p>
       )}
 
@@ -145,12 +231,19 @@ export default function StudentLessons() {
             )}
           </CardContent>
         </Card>
-      ) : (
-        // `items-stretch` keeps every card in a row the same height as the
-        // tallest sibling — no manual min-h needed per card.
+      ) : (   
         <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {visible.map((l) => (
-            <LessonCard key={l.id} lesson={l} onView={() => setViewing(l)} />
+            <div
+              key={l.id}
+              id={`lesson-${l.id}`}
+              className={cn(
+                "rounded-lg transition-shadow duration-700",
+                flashId === l.id && "ring-2 ring-primary ring-offset-2",
+              )}
+            >
+              <LessonCard lesson={l} onView={() => setViewing(l)} />
+            </div>
           ))}
         </div>
       )}

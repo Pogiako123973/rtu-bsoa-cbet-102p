@@ -50,10 +50,23 @@ export function useRealtimeTable(options: UseRealtimeTableOptions): void {
     handlerRef.current = onChange;
   }, [onChange]);
 
+  // Every call site (even ones watching the same table/filter/events) needs
+  // its own channel — Supabase's client dedupes by channel name, so two
+  // components requesting an identical name share one channel object. If
+  // the second caller's effect runs after the first has already called
+  // .subscribe(), adding another .on() to that same object throws:
+  // "cannot add postgres_changes callbacks ... after subscribe()".
+  // A stable-per-instance random suffix keeps every subscriber on its own
+  // channel so this never happens, no matter how many components listen to
+  // the same table.
+  const instanceIdRef = useRef(crypto.randomUUID());
+
   useEffect(() => {
     if (!enabled) return;
     const channel: RealtimeChannel = supabase
-      .channel(`realtime:${table}:${filter ?? ""}:${events.slice().sort().join(",")}`)
+      .channel(
+        `realtime:${table}:${filter ?? ""}:${events.slice().sort().join(",")}:${instanceIdRef.current}`,
+      )
       .on(
         "postgres_changes" as any,
         {

@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/AppShell";
@@ -37,6 +38,7 @@ import {
 } from "@/lib/api";
 import { SmartTimeInput } from "@/components/SmartTimeInput";
 import { formatTimeRange } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const DAYS = [
   "Sunday",
@@ -56,6 +58,7 @@ function displayStudent(s: StudentLite): string {
 }
 
 export default function AdminSchedule() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [entries, setEntries] = useState<ScheduleEntry[]>([]);
   const [students, setStudents] = useState<StudentLite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +72,7 @@ export default function AdminSchedule() {
   const [busy, setBusy] = useState(false);
 
   const [filterStudentId, setFilterStudentId] = useState<string>("");
+  const [flashId, setFlashId] = useState<string | null>(null);
 
   function refresh() {
     setLoading(true);
@@ -126,6 +130,41 @@ export default function AdminSchedule() {
       return next;
     });
   }
+
+  // Deep-link support: /admin/schedule?highlight=<entryId> (e.g. from the
+  // admin overview activity feed) resets the student filter so the entry
+  // can't be hidden, expands its day, scrolls to it, and briefly flashes
+  // the row. Strips the param afterward so a refresh doesn't repeat it.
+  useEffect(() => {
+    const highlightId = searchParams.get("highlight");
+    if (!highlightId || loading) return;
+    const target = entries.find((e) => e.id === highlightId);
+    if (!target) return;
+
+    setFilterStudentId("");
+    setExpanded((prev) => new Set(prev).add(target.day_of_week));
+    setFlashId(target.id);
+
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`schedule-${target.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    const flashTimer = setTimeout(() => setFlashId(null), 2500);
+
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("highlight");
+        return next;
+      },
+      { replace: true },
+    );
+
+    return () => clearTimeout(flashTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, entries, loading]);
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -345,7 +384,14 @@ export default function AdminSchedule() {
                     <>
                       <div className="flex flex-col gap-1.5">
                         {visible.map((e) => (
-                          <div key={e.id} className="admin-row">
+                          <div
+                            key={e.id}
+                            id={`schedule-${e.id}`}
+                            className={cn(
+                              "admin-row rounded-md transition-shadow duration-700",
+                              flashId === e.id && "ring-2 ring-primary ring-offset-2",
+                            )}
+                          >
                           <ScheduleRow
                             entry={e}
                             studentLabel={

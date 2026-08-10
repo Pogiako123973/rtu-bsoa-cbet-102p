@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { useAuth } from "@/hooks/useAuth";
+import { pushActivity } from "@/lib/activityStore";
 
 /**
  * Mount this once near the top of the app (anywhere inside AppShell). It
@@ -17,6 +18,12 @@ import { useAuth } from "@/hooks/useAuth";
  * It also broadcasts a `classdesk:data-changed` window event with the table
  * name in `detail.table`, so individual pages can refetch their own lists
  * without us having to wire each one through React context.
+ *
+ * Lesson and schedule inserts additionally get pushed into the shared
+ * activity feed store (see lib/activityStore.ts), which is what powers the
+ * "Live activity" card on the admin overview page. Because this hook lives
+ * in AppShell and never unmounts, the feed keeps working no matter which
+ * page the change happened on.
  *
  * IMPORTANT: the Supabase project must have realtime enabled for each
  * tracked table. Run this once in the Supabase SQL editor:
@@ -62,12 +69,18 @@ export function useRealtimeNotifications() {
     table: "schedules",
     events: ["INSERT", "UPDATE"],
     onChange: (payload) => {
-      const row = payload.new as { subject?: string };
+      const row = payload.new as { id?: string; subject?: string };
       if (payload.eventType === "INSERT") {
         toast("Schedule updated", {
           description: `New class added: ${row.subject ?? ""}`,
           icon: <CalendarPlus className="h-4 w-4" />,
           duration: 5000,
+        });
+        pushActivity({
+          kind: "schedule",
+          title: "New Schedule For All Students",
+          detail: row.subject ? `${row.subject} was added to the schedule.` : "A new class was added to the schedule.",
+          refId: row.id,
         });
       }
       broadcast("schedule");
@@ -98,11 +111,17 @@ export function useRealtimeNotifications() {
     table: "lessons",
     events: ["INSERT"],
     onChange: (payload) => {
-      const row = payload.new as { title?: string };
+      const row = payload.new as { id?: string; title?: string; subject?: string };
       toast("New lesson published", {
         description: row.title ?? "",
         icon: <Inbox className="h-4 w-4" />,
         duration: 5000,
+      });
+      pushActivity({
+        kind: "lesson",
+        title: "New Lesson Added",
+        detail: [row.subject, row.title].filter(Boolean).join(" — ") || "A new lesson was published.",
+        refId: row.id,
       });
       broadcast("lessons");
     },
